@@ -195,6 +195,10 @@
   </div>
 
   <script>
+    const REMOTE_CSV_URLS = [
+      "https://docs.google.com/spreadsheets/d/1gJ5VIcQ9zn_uYSXDM0Z1uE41AOCLhYaH-xZyBOe7Soc/export?format=csv&gid=0",
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1jbF0BYrh8U8JD0MqLv-yKYbytGonnfwLomMzWlf9LVKycjZEQt62lNfpfBky2l8qXTa96PjmU5iC/pub?gid=250277242&single=true&output=csv"
+    ];
     const initialCertificates = [
       { nome: "João Silva", semestre: "2023.1", evento: "Semana Acadêmica", tipo: "Participante", programa: "PROGIC", arquivo: "joao_silva.pdf", link: "https://example.com/certificados/joao_silva.pdf" },
       { nome: "Maria Oliveira", semestre: "2023.2", evento: "Congresso de Pesquisa", tipo: "Palestrante", programa: "PROERES", arquivo: "maria_oliveira.pdf", link: "https://example.com/certificados/maria_oliveira.pdf" },
@@ -207,6 +211,43 @@
     const filterPrograma = $("filter-programa"), filterSemestre = $("filter-semestre"), filterTipo = $("filter-tipo");
     const normalize = (value) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
+    function parseCSV(text) {
+      const rows = []; let row = []; let value = ""; let quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (quoted) { if (char === '"' && text[i + 1] === '"') { value += '"'; i++; } else if (char === '"') quoted = false; else value += char; }
+        else if (char === '"') quoted = true;
+        else if (char === ',') { row.push(value); value = ""; }
+        else if (char === '\n') { row.push(value); rows.push(row); row = []; value = ""; }
+        else if (char !== '\r') value += char;
+      }
+      if (value || row.length) { row.push(value); rows.push(row); }
+      return rows.filter((current) => current.some((cell) => cell.trim()));
+    }
+    function remoteRowsToCertificates(csv) {
+      const rows = parseCSV(csv); if (rows.length < 2) return [];
+      const headers = rows[0].map((header) => normalize(header));
+      const column = (names) => names.map(normalize).map((name) => headers.indexOf(name)).find((index) => index >= 0);
+      const nameIndex = column(["nome do aluno", "nome", "nome_limpo"]), eventIndex = column(["nome do certificado", "evento"]), semesterIndex = column(["semestre"]), programIndex = column(["evento", "programa"]), linkIndex = column(["link do certificado", "link", "url"]);
+      if ([nameIndex, eventIndex, semesterIndex, linkIndex].some((index) => index === undefined)) return [];
+      return rows.slice(1).map((row) => ({ nome: row[nameIndex]?.trim(), evento: row[eventIndex]?.trim(), semestre: row[semesterIndex]?.trim(), programa: programIndex !== undefined ? row[programIndex]?.trim() : "", tipo: "Certificado", link: row[linkIndex]?.trim(), arquivo: `${(row[nameIndex] || "certificado").trim().replace(/\s+/g, "_")}.pdf` })).filter((cert) => cert.nome && cert.link);
+    }
+    async function loadRemoteCertificates() {
+      $("loaded-status").textContent = "Atualizando pela planilha…";
+      for (const url of REMOTE_CSV_URLS) {
+        try {
+          const response = await fetch(`${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`, { cache: "no-store" });
+          if (!response.ok) continue;
+          const remoteCertificates = remoteRowsToCertificates(await response.text());
+          if (!remoteCertificates.length) continue;
+          allCertificates = remoteCertificates; localStorage.setItem("unintaCertificates", JSON.stringify(remoteCertificates));
+          populateFilters(); render(); $("loaded-status").textContent = `${remoteCertificates.length} certificados atualizados`;
+          return true;
+        } catch (error) { /* tenta a próxima fonte */ }
+      }
+      $("loaded-status").textContent = "Planilha indisponível; usando dados locais";
+      return false;
+    }
 
     function setOptions(select, values, label) {
       select.innerHTML = `<option value="">${label}</option>`;
@@ -232,9 +273,10 @@
       certificateList.innerHTML = results.map((cert) => `<article class="certificate-card"><div class="card-top"><span class="card-icon" aria-hidden="true">▣</span><span class="semester">${escapeHtml(cert.semestre || "Semestre não informado")}</span></div><h3>${escapeHtml(cert.nome || "Sem nome")}</h3><div class="meta"><span><b>Evento:</b> ${escapeHtml(cert.evento || "Não informado")}</span><span><b>Programa:</b> ${escapeHtml(cert.programa || "Não informado")}</span><span><b>Participação:</b> ${escapeHtml(cert.tipo || "Não informado")}</span></div><div class="card-actions"><a class="view-link" href="${escapeHtml(cert.link || "#")}" target="_blank" rel="noopener">Visualizar</a><a class="download-link" href="${escapeHtml(cert.link || "#")}" download="${escapeHtml(cert.arquivo || "certificado.pdf")}">Baixar PDF</a><button class="share-link" type="button" data-share-url="${escapeHtml(cert.link || "")}" data-share-name="${escapeHtml(cert.nome || "Certificado")}">Compartilhar</button></div></article>`).join("");
       emptyState.classList.toggle("show", results.length === 0);
     }
-    function loadCertificates() {
+    async function loadCertificates() {
       try { allCertificates = JSON.parse(localStorage.getItem("unintaCertificates") || "null") || initialCertificates; } catch { allCertificates = initialCertificates; }
       populateFilters(); render(); $("loaded-status").textContent = `${allCertificates.length} certificados disponíveis`;
+      await loadRemoteCertificates();
     }
     function resetFilters() { searchInput.value = ""; filterPrograma.value = ""; filterSemestre.value = ""; filterTipo.value = ""; $("clear-search").classList.remove("visible"); render(); }
     [searchInput, filterPrograma, filterSemestre, filterTipo].forEach((element) => element.addEventListener("input", () => { $("clear-search").classList.toggle("visible", Boolean(searchInput.value)); render(); }));
