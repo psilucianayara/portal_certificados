@@ -79,16 +79,20 @@
     .meta { display: grid; gap: 5px; color: var(--muted); font-size: .86rem; }
     .meta b { color: var(--ink); font-weight: 700; }
     .card-actions { display: flex; gap: 8px; margin-top: auto; padding-top: 18px; }
-    .card-actions a { flex: 1; text-align: center; text-decoration: none; border-radius: 10px; padding: 10px 8px; font-size: .83rem; font-weight: 800; }
+    .card-actions a, .card-actions button { flex: 1; text-align: center; text-decoration: none; border: 0; border-radius: 10px; padding: 10px 8px; font-size: .83rem; font-weight: 800; cursor: pointer; }
     .view-link { color: var(--blue); background: var(--blue-soft); }
     .download-link { color: white; background: var(--blue); }
+    .share-link { color: var(--ink); background: #eef2f6; }
     .view-link:hover { background: #dce9ff; }
     .download-link:hover { background: #174fab; }
+    .share-link:hover { background: #e1e7ee; }
     .empty { display: none; background: var(--surface); border: 1px dashed #b5c7dc; border-radius: 18px; text-align: center; padding: 52px 22px; color: var(--muted); }
     .empty.show { display: block; }
     .empty-icon { font-size: 2rem; margin-bottom: 8px; }
     .empty h3 { color: var(--ink); margin: 0 0 7px; }
     .empty p { margin: 0 auto; max-width: 450px; }
+    .toast { position: fixed; left: 50%; bottom: 24px; z-index: 20; transform: translate(-50%, 18px); opacity: 0; pointer-events: none; border-radius: 999px; padding: 12px 18px; color: white; background: var(--navy); box-shadow: 0 12px 35px rgba(3,17,34,.25); font-size: .88rem; font-weight: 700; transition: .22s ease; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
     footer { background: var(--navy); color: #b9cee5; padding: 34px 24px; text-align: center; font-size: .85rem; }
     footer strong { color: white; }
     .modal { display: none; position: fixed; inset: 0; z-index: 10; background: rgba(3,17,34,.65); padding: 20px; place-items: center; }
@@ -166,6 +170,7 @@
   </main>
 
   <footer><strong>Portal de Certificados · UNINTA</strong><br />Em caso de dúvidas, procure a gestão de pesquisa e extensão.</footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <div class="modal" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-card">
@@ -213,7 +218,7 @@
     function render() {
       const results = filteredCertificates();
       $("result-count").innerHTML = results.length ? `<strong>${results.length}</strong> ${results.length === 1 ? "certificado encontrado" : "certificados encontrados"}` : "Nenhum certificado encontrado";
-      certificateList.innerHTML = results.map((cert) => `<article class="certificate-card"><div class="card-top"><span class="card-icon" aria-hidden="true">▣</span><span class="semester">${escapeHtml(cert.semestre || "Semestre não informado")}</span></div><h3>${escapeHtml(cert.nome || "Sem nome")}</h3><div class="meta"><span><b>Evento:</b> ${escapeHtml(cert.evento || "Não informado")}</span><span><b>Programa:</b> ${escapeHtml(cert.programa || "Não informado")}</span><span><b>Participação:</b> ${escapeHtml(cert.tipo || "Não informado")}</span></div><div class="card-actions"><a class="view-link" href="${escapeHtml(cert.link || "#")}" target="_blank" rel="noopener">Visualizar</a><a class="download-link" href="${escapeHtml(cert.link || "#")}" download="${escapeHtml(cert.arquivo || "certificado.pdf")}">Baixar PDF</a></div></article>`).join("");
+      certificateList.innerHTML = results.map((cert) => `<article class="certificate-card"><div class="card-top"><span class="card-icon" aria-hidden="true">▣</span><span class="semester">${escapeHtml(cert.semestre || "Semestre não informado")}</span></div><h3>${escapeHtml(cert.nome || "Sem nome")}</h3><div class="meta"><span><b>Evento:</b> ${escapeHtml(cert.evento || "Não informado")}</span><span><b>Programa:</b> ${escapeHtml(cert.programa || "Não informado")}</span><span><b>Participação:</b> ${escapeHtml(cert.tipo || "Não informado")}</span></div><div class="card-actions"><a class="view-link" href="${escapeHtml(cert.link || "#")}" target="_blank" rel="noopener">Visualizar</a><a class="download-link" href="${escapeHtml(cert.link || "#")}" download="${escapeHtml(cert.arquivo || "certificado.pdf")}">Baixar PDF</a><button class="share-link" type="button" data-share-url="${escapeHtml(cert.link || "")}" data-share-name="${escapeHtml(cert.nome || "Certificado")}">Compartilhar</button></div></article>`).join("");
       emptyState.classList.toggle("show", results.length === 0);
     }
     function loadCertificates() {
@@ -224,6 +229,25 @@
     [searchInput, filterPrograma, filterSemestre, filterTipo].forEach((element) => element.addEventListener("input", () => { $("clear-search").classList.toggle("visible", Boolean(searchInput.value)); render(); }));
     $("clear-search").addEventListener("click", () => { searchInput.value = ""; $("clear-search").classList.remove("visible"); searchInput.focus(); render(); });
     $("clear-filters").addEventListener("click", resetFilters);
+    let toastTimer;
+    function showToast(text) { const toast = $("toast"); toast.textContent = text; toast.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("show"), 2800); }
+    async function shareCertificate(button) {
+      const url = button.dataset.shareUrl;
+      const name = button.dataset.shareName || "Certificado";
+      if (!url) return showToast("Este certificado ainda não possui um link.");
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: `Certificado de ${name}`, text: "Acesse este certificado acadêmico.", url });
+          showToast("Certificado compartilhado.");
+        } else {
+          await navigator.clipboard.writeText(url);
+          showToast("Link copiado para a área de transferência.");
+        }
+      } catch (error) {
+        if (error.name !== "AbortError") showToast("Não foi possível compartilhar o certificado.");
+      }
+    }
+    certificateList.addEventListener("click", (event) => { const button = event.target.closest("[data-share-url]"); if (button) shareCertificate(button); });
 
     const modal = $("update-modal"), fileInput = $("file-input"), message = $("update-message"), fileDrop = $("file-drop-area");
     $("open-update-modal").addEventListener("click", () => modal.classList.add("open"));
