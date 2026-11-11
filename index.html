@@ -241,7 +241,7 @@
           const remoteCertificates = remoteRowsToCertificates(await response.text());
           if (!remoteCertificates.length) continue;
           allCertificates = remoteCertificates; localStorage.setItem("unintaCertificates", JSON.stringify(remoteCertificates));
-          populateFilters(); render(); $("loaded-status").textContent = `${remoteCertificates.length} certificados atualizados`;
+          populateFilters(); render(); $("loaded-status").textContent = "Base atualizada";
           return true;
         } catch (error) { /* tenta a próxima fonte */ }
       }
@@ -268,14 +268,23 @@
       });
     }
     function render() {
+      const query = normalize(searchInput.value);
+      if (!query) {
+        $("result-count").textContent = "Digite um nome para começar";
+        certificateList.innerHTML = "";
+        emptyState.innerHTML = `<div class="empty-icon">⌕</div><h3>Encontre seu certificado</h3><p>Digite seu nome ou uma palavra-chave para visualizar os resultados.</p>`;
+        emptyState.classList.add("show");
+        return;
+      }
       const results = filteredCertificates();
       $("result-count").innerHTML = results.length ? `<strong>${results.length}</strong> ${results.length === 1 ? "certificado encontrado" : "certificados encontrados"}` : "Nenhum certificado encontrado";
       certificateList.innerHTML = results.map((cert) => `<article class="certificate-card"><div class="card-top"><span class="card-icon" aria-hidden="true">▣</span><span class="semester">${escapeHtml(cert.semestre || "Semestre não informado")}</span></div><h3>${escapeHtml(cert.nome || "Sem nome")}</h3><div class="meta"><span><b>Evento:</b> ${escapeHtml(cert.evento || "Não informado")}</span><span><b>Programa:</b> ${escapeHtml(cert.programa || "Não informado")}</span><span><b>Participação:</b> ${escapeHtml(cert.tipo || "Não informado")}</span></div><div class="card-actions"><a class="view-link" href="${escapeHtml(cert.link || "#")}" target="_blank" rel="noopener">Visualizar</a><a class="download-link" href="${escapeHtml(cert.link || "#")}" download="${escapeHtml(cert.arquivo || "certificado.pdf")}">Baixar PDF</a><button class="share-link" type="button" data-share-url="${escapeHtml(cert.link || "")}" data-share-name="${escapeHtml(cert.nome || "Certificado")}">Compartilhar</button></div></article>`).join("");
+      emptyState.innerHTML = `<div class="empty-icon">⌕</div><h3>Nenhum certificado encontrado</h3><p>Tente buscar apenas pelo primeiro nome ou limpe os filtros. Se ainda precisar de ajuda, entre em contato com a gestão.</p>`;
       emptyState.classList.toggle("show", results.length === 0);
     }
     async function loadCertificates() {
       try { allCertificates = JSON.parse(localStorage.getItem("unintaCertificates") || "null") || initialCertificates; } catch { allCertificates = initialCertificates; }
-      populateFilters(); render(); $("loaded-status").textContent = `${allCertificates.length} certificados disponíveis`;
+      populateFilters(); render(); $("loaded-status").textContent = "Base pronta para consulta";
       await loadRemoteCertificates();
     }
     function resetFilters() { searchInput.value = ""; filterPrograma.value = ""; filterSemestre.value = ""; filterTipo.value = ""; $("clear-search").classList.remove("visible"); render(); }
