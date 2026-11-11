@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0b2341" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
   <title>Portal de Certificados | UNINTA</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
@@ -36,6 +38,9 @@
     .brand small { display: block; margin-top: 2px; color: #b9cee5; font-size: .74rem; }
     .admin-button { border: 1px solid rgba(255,255,255,.25); border-radius: 999px; background: transparent; color: white; padding: 10px 16px; cursor: pointer; font-weight: 700; transition: .2s ease; }
     .admin-button:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.5); }
+    .install-button { display: none; border: 0; border-radius: 999px; background: var(--gold); color: var(--navy); padding: 10px 16px; cursor: pointer; font-weight: 800; transition: .2s ease; }
+    .install-button.visible { display: inline-flex; align-items: center; gap: 7px; }
+    .install-button:hover { background: #ffd36d; transform: translateY(-1px); }
     .hero { background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 70%, #1c588a 100%); color: white; position: relative; overflow: hidden; }
     .hero::after { content: ""; position: absolute; width: 360px; height: 360px; border-radius: 50%; right: -110px; top: -180px; background: rgba(244,183,64,.15); }
     .hero-inner { max-width: 1180px; margin: auto; padding: 64px 24px 92px; position: relative; z-index: 1; }
@@ -111,7 +116,10 @@
         <span class="brand-mark">UN</span>
         <span><strong>Portal de Certificados</strong><small>UNINTA · Campus Tianguá</small></span>
       </a>
-      <button class="admin-button" id="open-update-modal" type="button">Área administrativa</button>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="install-button" id="install-button" type="button">＋ Instalar app</button>
+        <button class="admin-button" id="open-update-modal" type="button">Área administrativa</button>
+      </div>
     </div>
   </header>
 
@@ -236,6 +244,27 @@
         localStorage.setItem("unintaCertificates", JSON.stringify(imported)); allCertificates = imported; populateFilters(); render(); $("loaded-status").textContent = `${imported.length} certificados disponíveis`; showMessage(`${imported.length} certificados carregados com sucesso.`, "success");
       } catch (error) { showMessage(error.message || "Não foi possível processar a planilha.", "error"); } }; reader.readAsArrayBuffer(file);
     });
+    let deferredInstallPrompt = null;
+    const installButton = $("install-button");
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installButton.classList.add("visible");
+    });
+    installButton.addEventListener("click", async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      installButton.classList.remove("visible");
+    });
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      installButton.classList.remove("visible");
+    });
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    }
     loadCertificates();
   </script>
 </body>
